@@ -1,0 +1,120 @@
+{
+  "wizard": {
+    "securityAcknowledgedAt": "2026-10-03T22:16:49.064Z",
+    "accessMode": "full",
+    "lastRunAt": "2026-10-03T22:34:15.139Z",
+    "lastRunVersion": "2026.9.8",
+    "lastRunCommand": "onboard",
+    "lastRunMode": "local"
+  },
+  "plugins": {
+    "entries": {
+      "anthropic": {
+        "config": {
+          "sessionCatalog": {
+            "enabled": false
+          }
+        }
+      },
+      "codex": {
+        "config": {
+          "sessionCatalog": {
+            "enabled": false
+          }
+        }
+      }
+    }
+  },
+  "meta": {
+    "migrations": {
+      "modelPolicyAllowlist": true,
+      "utilityModelSeparation": true
+    },
+    "lastTouchedVersion": "2026.9.8"
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "/home/codespace/.openclaw/workspace",
+      "models": {
+        "groq/qwen/qwen3.8-27b": {},
+        "groq/openai/gpt-oss-120b": {}
+      },
+      "model": {
+        "primary": "groq/qwen/qwen3.8-27b"
+      }
+    },
+    "entries": {
+      "main": {
+        "name": "main",
+        "workspace": "/home/codespace/.openclaw/workspace",
+        "agentDir": "/home/codespace/.openclaw/agents/main/agent",
+        "identity": {
+          "name": "main"
+        }
+      }
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "6f1057a6e0da451d55869e1ff936772c673fe00fffe245e7"
+    },
+    "tailscale": {
+      "mode": "off"
+    },
+    "trustedProxies": [
+      "127.0.0.1",
+      "::1",
+      "172.16.0.0/12",
+      "10.0.0.0/8"
+    ],
+    "controlUi": {
+      "enabled": true,
+      "dangerouslyAllowHostHeaderOriginFallback": true
+    },
+    "publicOrigin": "https://silver-engine-g4jq7xx56vj72vvrw-18789.app.github.dev"
+  },
+  "tools": {
+    "profile": "minimal",
+    "web": {}
+  },
+  "telemetry": {
+    "enabled": false,
+    "consentedAt": "2026-10-03T22:32:30.168Z"
+  },
+  "hooks": {
+    "internal": {
+      "entries": {
+        "session-memory": {
+          "enabled": false
+        }
+      }
+    }
+  },
+  "models": {
+    "providers": {
+      "groq": {
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "api": "openai-completions",
+        "apiKey": "$GROQ_API_KEY",
+        "models": [
+          {
+            "id": "qwen/qwen3.8-27b",
+            "name": "Qwen",
+            "contextWindow": 32768,
+            "maxTokens": 4096
+          },
+          {
+            "id": "openai/gpt-oss-120b",
+            "name": "GPT OSS 120B",
+            "contextWindow": 131072,
+            "maxTokens": 4096
+          }
+        ]
+      }
+    }
+  }
+}
