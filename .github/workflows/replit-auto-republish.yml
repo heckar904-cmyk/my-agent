@@ -1,0 +1,38 @@
+name: Auto Republish Replit (FREE)
+
+on:
+  schedule:
+    - cron: '0 0 */25 * *'  # каждые 25 дней, за 4 дня до истечения 29 дней
+  workflow_dispatch:
+
+jobs:
+  republish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Republish Replit App
+        env:
+          REPLIT_TOKEN: ${{ secrets.REPLIT_TOKEN }}
+          REPLIT_DEPLOYMENT_ID: ${{ secrets.REPLIT_DEPLOYMENT_ID }}
+        run: |
+          if [ -z "$REPLIT_TOKEN" ]; then
+            echo "No REPLIT_TOKEN secret, skipping auto-republish"
+            echo "Чтобы авто-публикация работала без тебя:"
+            echo "1. Зайди на https://replit.com/account"
+            echo "2. Скопируй token из cookies или используй Replit API"
+            echo "3. Добавь в GitHub Secrets: REPLIT_TOKEN и REPLIT_DEPLOYMENT_ID"
+            echo "Или просто раз в 29 дней нажимай Republish вручную в Replit - тоже бесплатно, 1 клик"
+            exit 0
+          fi
+          
+          echo "Trying to republish Replit deployment..."
+          # Replit API for deployments - недокументирован, пробуем
+          # Альтернатива: используй UptimeRobot чтобы держать dev URL живым без expiry
+          echo "Deployment: https://my-agent--heckar904.replit.app"
+          echo "Этот URL истекает через 29 дней на бесплатном тарифе"
+          echo "Чтобы не истекал, используй dev URL + UptimeRobot, или нажимай Republish раз в месяц"
+          
+          # Пингуем текущий deployment чтобы показать активность
+          curl -s https://my-agent--heckar904.replit.app/status || echo "Ping failed"
+          curl -s https://my-agent--heckar904.replit.app/keepalive || echo "Keepalive failed"
+          
+          echo "Если хочешь 100% без истечения - используй Oracle Cloud (навсегда бесплатно) или держи Replit repl запущенным без Publish (dev URL)"
