@@ -1,7 +1,4 @@
-// Linux Agent Server для my-agent Codespace
-// Запуск: node server.js
-// Порт 3000, пробрось Public в Codespaces
-
+// Linux Agent Server для my-agent Codespace + Replit - v1.0.8 persist keys
 const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
@@ -13,21 +10,56 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '50mb' }));
 
-// Логи
-function log(msg) {
-  console.log(`[${new Date().toISOString()}] ${msg}`);
+function log(msg){ console.log(`[${new Date().toISOString()}] ${msg}`); }
+
+const KEYS_FILE = path.join(__dirname, 'user-keys.json');
+let cachedKeys = {};
+try{
+  if(fs.existsSync(KEYS_FILE)){
+    cachedKeys = JSON.parse(fs.readFileSync(KEYS_FILE,'utf8'));
+    log('Loaded keys from '+KEYS_FILE);
+  }
+}catch(e){ log('keys load error '+e.message); cachedKeys={}; }
+
+function saveKeysToFile(keys){
+  cachedKeys = {...cachedKeys, ...keys, updated: new Date().toISOString()};
+  try{
+    fs.writeFileSync(KEYS_FILE, JSON.stringify(cachedKeys, null, 2));
+    log('Keys saved: gemini='+(cachedKeys.gemini?'yes':'no')+' groq='+(cachedKeys.groq?'yes':'no'));
+  }catch(e){ log('save error '+e.message); }
+  return cachedKeys;
 }
 
-// Статус системы - реальные данные
+app.post('/save-keys', (req,res)=>{
+  const {gemini, groq, githubPat, codespaceUrl, extraPats} = req.body;
+  const toSave = {};
+  if(gemini!==undefined) toSave.gemini = gemini;
+  if(groq!==undefined) toSave.groq = groq;
+  if(githubPat!==undefined) toSave.githubPat = githubPat;
+  if(codespaceUrl!==undefined) toSave.codespaceUrl = codespaceUrl;
+  if(extraPats!==undefined) toSave.extraPats = extraPats;
+  const saved = saveKeysToFile(toSave);
+  res.json({ok:true, saved: {gemini: !!saved.gemini, groq: !!saved.groq, githubPat: !!saved.githubPat, codespaceUrl: saved.codespaceUrl}, updated: saved.updated});
+});
+
+app.get('/get-keys', (req,res)=>{
+  res.json({
+    gemini: cachedKeys.gemini||'',
+    groq: cachedKeys.groq||'',
+    githubPat: cachedKeys.githubPat||'',
+    codespaceUrl: cachedKeys.codespaceUrl||'',
+    extraPats: cachedKeys.extraPats||'',
+    updated: cachedKeys.updated||''
+  });
+});
+
 app.get('/status', (req, res) => {
   const cpus = os.cpus();
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
   const uptime = os.uptime();
-  
   exec('df -h / | tail -1', (err, stdout) => {
     const disk = stdout ? stdout.trim() : 'unknown';
-    
     res.json({
       online: true,
       hostname: os.hostname(),
@@ -43,144 +75,84 @@ app.get('/status', (req, res) => {
       disk: disk,
       load: os.loadavg(),
       timestamp: new Date().toISOString(),
-      message: 'Linux Codespace работает, готов к командам'
+      message: 'Linux работает, ключи: gemini='+(cachedKeys.gemini?'yes':'no'),
+      keysSaved: {gemini: !!cachedKeys.gemini, groq: !!cachedKeys.groq, pat: !!cachedKeys.githubPat}
     });
   });
 });
 
-// Выполнить команду
 app.post('/exec', (req, res) => {
   const { cmd } = req.body;
   if (!cmd) return res.status(400).json({ error: 'No cmd' });
-  
-  // Безопасность - запрещаем опасные команды
   const blocked = ['rm -rf /', ':(){:|:&};:', 'mkfs', 'dd if='];
-  if (blocked.some(b => cmd.includes(b))) {
-    return res.status(403).json({ error: 'Blocked command' });
-  }
-  
+  if (blocked.some(b => cmd.includes(b))) return res.status(403).json({ error: 'Blocked' });
   log(`Exec: ${cmd}`);
-  
   exec(cmd, { timeout: 30000, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
-    res.json({
-      cmd,
-      stdout: stdout?.slice(0, 10000) || '',
-      stderr: stderr?.slice(0, 5000) || '',
-      error: err?.message || null,
-      code: err?.code || 0
-    });
+    res.json({ cmd, stdout: stdout?.slice(0, 10000) || '', stderr: stderr?.slice(0, 5000) || '', error: err?.message || null, code: err?.code || 0 });
   });
 });
 
-// Чат через Linux (прокси к Gemini если ключ есть)
 app.post('/chat', async (req, res) => {
   const { prompt, model } = req.body;
-  const geminiKey = process.env.GEMINI_KEY || fs.existsSync('.env') ? fs.readFileSync('.env','utf8').match(/GEMINI_KEY=(.*)/)?.[1] : null;
-  
+  const geminiKey = cachedKeys.gemini || process.env.GEMINI_KEY || (fs.existsSync('.env') ? fs.readFileSync('.env','utf8').match(/GEMINI_KEY=(.*)/)?.[1] : null);
   if (!prompt) return res.status(400).json({ error: 'No prompt' });
-  
-  // Если есть ключ - пробуем Gemini напрямую с Linux
   if (geminiKey) {
     try {
       const fetch = (await import('node-fetch')).default;
       const modelName = model || 'gemini-2.0-flash';
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`;
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
-        })
-      });
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 2048 } }) });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error?.message || 'Gemini error');
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response';
       return res.json({ response: text, via: 'linux-gemini', model: modelName });
     } catch (e) {
       log(`Gemini error: ${e.message}`);
-      return res.json({ response: `Linux получил запрос: "${prompt.slice(0,100)}"\n\nНо Gemini вернул ошибку: ${e.message}\n\nПопробуй модель gemini-2.0-flash - она стабильная.`, via: 'linux-fallback' });
+      return res.json({ response: `Linux: "${prompt.slice(0,100)}"\nОшибка: ${e.message}`, via: 'linux-fallback' });
     }
   }
-  
-  // Без ключа - просто эхо с инфо о системе
-  res.json({
-    response: `Привет с Linux! Я работаю на ${os.hostname()}, ${os.cpus().length} vCPU, ${Math.round(os.totalmem()/1024/1024)}MB RAM.\n\nТвой запрос: ${prompt}\n\nЧтобы я отвечал как ИИ, добавь GEMINI_KEY в .env файл в Codespace.\n\nА так я могу:\n- Выполнять команды через /exec\n- Монтировать видео через /montage\n- Показывать статус через /status`,
-    via: 'linux-echo'
-  });
+  res.json({ response: `Привет с Linux! ${os.hostname()}, ${os.cpus().length} vCPU. Запрос: ${prompt}\nДобавь ключ через сайт и он сохранится на сервере.`, via: 'linux-echo' });
 });
 
-// Монтаж TikTok - принимает файлы и делает ffmpeg
 app.post('/montage', async (req, res) => {
-  // Заглушка - в реальности тут ffmpeg
   log('Montage request');
-  res.json({
-    status: 'ready',
-    message: 'Монтаж готов к работе. Загрузи видео через /upload',
-    ffmpeg: await new Promise(resolve => {
-      exec('ffmpeg -version | head -1', (err, stdout) => {
-        resolve(stdout?.trim() || 'ffmpeg not found, install: sudo apt install ffmpeg');
-      });
-    })
-  });
+  res.json({ status: 'ready', message: 'Монтаж готов', ffmpeg: await new Promise(resolve => { exec('ffmpeg -version | head -1', (err, stdout) => { resolve(stdout?.trim() || 'ffmpeg not found'); }); }) });
 });
 
-// Keepalive - не давать заснуть
 let lastPing = Date.now();
 app.get('/keepalive', (req, res) => {
   lastPing = Date.now();
-  // Трогаем файл чтобы показать активность
   try { fs.writeFileSync('/tmp/keepalive', new Date().toISOString()); } catch(e){}
   res.json({ status: 'alive', lastPing: new Date(lastPing).toISOString(), uptime: os.uptime() });
 });
 
 app.get('/sleep-config', (req, res) => {
-  res.json({
-    message: 'Чтобы Codespace не засыпал, в APK включи ☕ Не давать засыпать. Тогда APK будет пинговать /keepalive каждые 10 мин.',
-    githubSettings: 'Или зайди на https://github.com/settings/codespaces и поставь Default idle timeout 240 минут (максимум)',
-    currentTimeout: process.env.CODESPACE_IDLE_TIMEOUT || '30 min default',
-    keepalive: true,
-    lastPing: new Date(lastPing).toISOString()
-  });
+  res.json({ message: 'Keepalive', lastPing: new Date(lastPing).toISOString() });
 });
 
-// Корень
 app.get('/', (req, res) => {
   res.json({
     name: 'Linux Agent Server',
-    version: '1.0.7-auto-wake',
+    version: '1.0.8-persist-keys',
     status: 'online',
-    autoWake: 'Поддерживает авто-пробуждение через GitHub API',
-    keepalive: 'Поддерживает /keepalive чтобы не засыпать',
+    keys: {gemini: !!cachedKeys.gemini, groq: !!cachedKeys.groq, pat: !!cachedKeys.githubPat},
     endpoints: {
-      '/status': 'GET - реальный статус CPU/RAM/Disk',
-      '/exec': 'POST {cmd} - выполнить команду',
-      '/chat': 'POST {prompt, model} - чат через Linux',
-      '/montage': 'POST - монтаж видео',
-      '/keepalive': 'GET - пинг чтобы не заснул',
-      '/sleep-config': 'GET - настройки сна'
+      '/status': 'GET',
+      '/save-keys': 'POST {gemini,groq,githubPat,codespaceUrl}',
+      '/get-keys': 'GET',
+      '/exec': 'POST {cmd}',
+      '/chat': 'POST {prompt}',
+      '/keepalive': 'GET'
     },
-    howTo: '1. Пробрось порт 3000 Public 2. Вставь URL в APK 3. Вставь GitHub PAT в APK для авто-пробуждения',
     timestamp: new Date().toISOString()
   });
 });
 
-// Авто-keepalive внутри сервера - трогаем файл каждую минуту чтобы GitHub считал активным
 setInterval(() => {
-  try {
-    fs.writeFileSync('/tmp/keepalive', new Date().toISOString());
-    // Также пишем в лог
-    if (Date.now() - lastPing < 15*60*1000) {
-      console.log(`[keepalive] still alive, last external ping ${Math.round((Date.now()-lastPing)/1000)}s ago`);
-    }
-  } catch(e){}
+  try { fs.writeFileSync('/tmp/keepalive', new Date().toISOString()); } catch(e){}
 }, 60*1000);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  log(`Server running on http://0.0.0.0:${PORT}`);
-  log(`Codespace URL будет типа https://xxx-3000.app.github.dev`);
-  log(`Пробрось порт 3000 как Public!`);
-  log(`CPU: ${os.cpus().length} x ${os.cpus()[0]?.model}`);
-  log(`RAM: ${Math.round(os.totalmem()/1024/1024)} MB`);
+  log(`Server running on 0.0.0.0:${PORT} v1.0.8-persist`);
 });
