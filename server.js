@@ -125,22 +125,56 @@ app.post('/montage', async (req, res) => {
   });
 });
 
+// Keepalive - не давать заснуть
+let lastPing = Date.now();
+app.get('/keepalive', (req, res) => {
+  lastPing = Date.now();
+  // Трогаем файл чтобы показать активность
+  try { fs.writeFileSync('/tmp/keepalive', new Date().toISOString()); } catch(e){}
+  res.json({ status: 'alive', lastPing: new Date(lastPing).toISOString(), uptime: os.uptime() });
+});
+
+app.get('/sleep-config', (req, res) => {
+  res.json({
+    message: 'Чтобы Codespace не засыпал, в APK включи ☕ Не давать засыпать. Тогда APK будет пинговать /keepalive каждые 10 мин.',
+    githubSettings: 'Или зайди на https://github.com/settings/codespaces и поставь Default idle timeout 240 минут (максимум)',
+    currentTimeout: process.env.CODESPACE_IDLE_TIMEOUT || '30 min default',
+    keepalive: true,
+    lastPing: new Date(lastPing).toISOString()
+  });
+});
+
 // Корень
 app.get('/', (req, res) => {
   res.json({
     name: 'Linux Agent Server',
-    version: '1.0.1',
+    version: '1.0.7-auto-wake',
     status: 'online',
+    autoWake: 'Поддерживает авто-пробуждение через GitHub API',
+    keepalive: 'Поддерживает /keepalive чтобы не засыпать',
     endpoints: {
       '/status': 'GET - реальный статус CPU/RAM/Disk',
       '/exec': 'POST {cmd} - выполнить команду',
       '/chat': 'POST {prompt, model} - чат через Linux',
-      '/montage': 'POST - монтаж видео'
+      '/montage': 'POST - монтаж видео',
+      '/keepalive': 'GET - пинг чтобы не заснул',
+      '/sleep-config': 'GET - настройки сна'
     },
-    howTo: 'Этот сервер связывает APK с Linux. Пробрось порт 3000 как Public в Codespaces и вставь URL в APK.',
+    howTo: '1. Пробрось порт 3000 Public 2. Вставь URL в APK 3. Вставь GitHub PAT в APK для авто-пробуждения',
     timestamp: new Date().toISOString()
   });
 });
+
+// Авто-keepalive внутри сервера - трогаем файл каждую минуту чтобы GitHub считал активным
+setInterval(() => {
+  try {
+    fs.writeFileSync('/tmp/keepalive', new Date().toISOString());
+    // Также пишем в лог
+    if (Date.now() - lastPing < 15*60*1000) {
+      console.log(`[keepalive] still alive, last external ping ${Math.round((Date.now()-lastPing)/1000)}s ago`);
+    }
+  } catch(e){}
+}, 60*1000);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
