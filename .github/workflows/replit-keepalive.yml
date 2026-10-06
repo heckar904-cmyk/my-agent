@@ -1,0 +1,33 @@
+name: Keep Replit Alive Forever (FREE)
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # каждые 5 минут
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Replit Deployment
+        run: |
+          echo "Pinging Replit to keep forever active..."
+          for i in 1 2 3; do
+            echo "Attempt $i"
+            curl -s https://my-agent--heckar904.replit.app/status || echo "status fail"
+            curl -s https://my-agent--heckar904.replit.app/keepalive || echo "keepalive fail"
+            curl -s https://my-agent--heckar904.replit.app/ | head -c 200
+            echo ""
+            sleep 5
+          done
+          echo "Replit pinged, will stay online forever (Deployment is always-on, plus this keeps it warm)"
+          
+      - name: Check expiry and auto-republish if needed
+        run: |
+          echo "Replit Deployment expires in 29 days on free tier"
+          echo "This workflow pings every 5 min to keep it alive"
+          echo "Auto-republish every 25 days is in replit-auto-republish.yml"
+          echo "For 100% forever without 29-day expiry, use dev URL + this ping, or set REPLIT_TOKEN secret"
+          echo "Current time: $(date)"
+          echo "Replit URL: https://my-agent--heckar904.replit.app"
+          curl -s https://my-agent--heckar904.replit.app/status | python3 -m json.tool || true
