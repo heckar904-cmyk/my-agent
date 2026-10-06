@@ -1,0 +1,26 @@
+{
+  "name": "AI Agent Linux",
+  "image": "mcr.microsoft.com/devcontainers/base:debian",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Linux Agent Server",
+      "visibility": "public",
+      "onAutoForward": "notify"
+    }
+  },
+  "postStartCommand": "bash -c 'cd /workspaces/my-agent && npm install && nohup node server.js > server.log 2>&1 & echo \"Server started\"'",
+  "postAttachCommand": {
+    "server": "bash -c 'cd /workspaces/my-agent && (pgrep -f \"node server.js\" > /dev/null || (nohup node server.js > server.log 2>&1 & echo \"Server restarted\")) && cat server.log | tail -20'"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["GitHub.copilot"]
+    }
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "2gb",
+    "storage": "25gb"
+  }
+}
